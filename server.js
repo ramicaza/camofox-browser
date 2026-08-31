@@ -7,6 +7,7 @@ import fs from 'fs';
 import os from 'os';
 import { expandMacro } from './lib/macros.js';
 import { loadConfig } from './lib/config.js';
+import { resolveGeolocation } from './lib/geo.js';
 import { normalizePlaywrightProxy, createProxyPool, buildProxyUrl } from './lib/proxy.js';
 import { createFlyHelpers } from './lib/fly.js';
 import { createPluginEvents, loadPlugins } from './lib/plugins.js';
@@ -1339,11 +1340,14 @@ async function getSession(userId, { trace = false } = {}) {
         permissions: ['geolocation'],
       };
       // When geoip is active (proxy configured), camoufox auto-configures
-      // locale/timezone/geolocation from the proxy IP. Without proxy, use defaults.
+      // locale/timezone/geolocation from the proxy IP. Without proxy, resolve a
+      // configurable fingerprint: exact coords if set, else a random point in a
+      // circle around the center (avoids a fixed, easily-fingerprinted location).
       if (!CONFIG.proxy.host) {
-        contextOptions.locale = 'en-US';
-        contextOptions.timezoneId = 'America/Los_Angeles';
-        contextOptions.geolocation = { latitude: 37.7749, longitude: -122.4194 };
+        const geo = resolveGeolocation(CONFIG.geo);
+        contextOptions.locale = geo.locale;
+        contextOptions.timezoneId = geo.timezoneId;
+        contextOptions.geolocation = geo.geolocation;
       }
       let sessionProxy = null;
       if (proxyPool?.canRotateSessions) {
