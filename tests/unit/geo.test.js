@@ -80,3 +80,59 @@ describe('resolveGeolocation', () => {
     expect(resolveGeolocation({}).timezoneId).toBe('America/Los_Angeles');
   });
 });
+
+describe('resolveGeolocation — partial-config warnings', () => {
+  test('all-default config produces no warnings', () => {
+    expect(resolveGeolocation({}, mulberry32(1)).warnings).toEqual([]);
+    expect(resolveGeolocation({}).warnings).toEqual([]);
+  });
+
+  test('consistent pair (coords + matching tz) produces no warnings', () => {
+    const g = resolveGeolocation({
+      timezoneId: 'America/Detroit',
+      exact: { latitude: 42.3314, longitude: -83.0458 },
+    });
+    expect(g.timezoneId).toBe('America/Detroit');
+    expect(g.warnings).toEqual([]);
+  });
+
+  test('center coords + matching tz (circle mode) produces no warnings', () => {
+    const g = resolveGeolocation({
+      timezoneId: 'America/Detroit',
+      center: { latitude: 42.3314, longitude: -83.0458 },
+      radiusKm: 15,
+    }, mulberry32(7));
+    expect(g.warnings).toEqual([]);
+  });
+
+  test('coords set but timezone NOT set -> warns (LA tz with non-LA coords)', () => {
+    const g = resolveGeolocation({
+      exact: { latitude: 42.3314, longitude: -83.0458 },
+    });
+    expect(g.timezoneId).toBe('America/Los_Angeles');
+    expect(g.warnings).toHaveLength(1);
+    expect(g.warnings[0]).toMatch(/CAMOFOX_TIMEZONE_ID/);
+  });
+
+  test('center-only (no tz) -> warns', () => {
+    const g = resolveGeolocation({
+      center: { latitude: 42.3314, longitude: -83.0458 },
+    }, mulberry32(7));
+    expect(g.warnings).toHaveLength(1);
+    expect(g.warnings[0]).toMatch(/CAMOFOX_TIMEZONE_ID/);
+  });
+
+  test('timezone set but NO coords -> warns (random LA point with non-LA tz)', () => {
+    const g = resolveGeolocation({ timezoneId: 'Europe/Paris' }, mulberry32(3));
+    expect(g.timezoneId).toBe('Europe/Paris');
+    expect(g.warnings).toHaveLength(1);
+    expect(g.warnings[0]).toMatch(/coordinates given/);
+  });
+
+  test('radius only (center still default LA) -> no warning (coords not user-supplied)', () => {
+    // Radius alone does not move the center off LA, so it stays consistent
+    // with the default LA timezone.
+    const g = resolveGeolocation({ radiusKm: 5 }, mulberry32(9));
+    expect(g.warnings).toEqual([]);
+  });
+});
