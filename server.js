@@ -1348,6 +1348,7 @@ async function getSession(userId, { trace = false } = {}) {
         contextOptions.locale = geo.locale;
         contextOptions.timezoneId = geo.timezoneId;
         contextOptions.geolocation = geo.geolocation;
+        log('info', 'geo fingerprint', { timezoneId: geo.timezoneId, locale: geo.locale, ...geo.geolocation });
       }
       let sessionProxy = null;
       if (proxyPool?.canRotateSessions) {
