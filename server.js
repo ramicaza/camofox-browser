@@ -1072,6 +1072,58 @@ function _countActiveHandles() {
   try { return process._getActiveHandles().length; } catch { return null; }
 }
 
+
+// --- Pinned stable fingerprint (opt-in via CAMOFOX_PINNED_FINGERPRINT) ---
+// When CAMOFOX_PINNED_FINGERPRINT points at a JSON file, load a frozen
+// BrowserForge fingerprint (+ optional webgl_config + fixed per-launch rand
+// seeds) so the identity is STABLE across relaunches instead of re-drawn
+// randomly on every browser launch. Returns extra launchOptions params to
+// spread, or {} when unset (preserves current random behavior).
+//   fingerprint          : complete BrowserForge firefox/linux object
+//   webgl_config         : [vendor, renderer] -> real-device GL blob (webgl_data.db)
+//   config               : fixed seeds (fonts:spacing_seed, audio:seed,
+//                          canvas:seed, window.history.length)
+//   i_know_what_im_doing : suppresses the "custom fingerprint" leak warning
+let _pinnedFingerprintOverrides = null;
+let _pinnedFingerprintLoaded = false;
+function getPinnedFingerprintOverrides() {
+  if (_pinnedFingerprintLoaded) return _pinnedFingerprintOverrides;
+  _pinnedFingerprintLoaded = true;
+  const p = process.env.CAMOFOX_PINNED_FINGERPRINT;
+  if (!p) {
+    _pinnedFingerprintOverrides = {};
+    return _pinnedFingerprintOverrides;
+  }
+  try {
+    const raw = JSON.parse(require("fs").readFileSync(p, "utf8"));
+    const overrides = {};
+    if (raw.fingerprint) {
+      overrides.fingerprint = raw.fingerprint;
+      overrides.i_know_what_im_doing = true;
+    }
+    if (Array.isArray(raw.webgl_config) && raw.webgl_config.length === 2) {
+      overrides.webgl_config = raw.webgl_config;
+    }
+    if (raw.config && typeof raw.config === "object") {
+      overrides.config = raw.config;
+    }
+    _pinnedFingerprintOverrides = overrides;
+    log("info", "pinned fingerprint loaded", {
+      path: p,
+      webgl_config: overrides.webgl_config || null,
+      hasFingerprint: !!overrides.fingerprint,
+      fixedConfigKeys: Object.keys(overrides.config || {}),
+    });
+  } catch (err) {
+    log("error", "pinned fingerprint load failed; falling back to random", {
+      path: p,
+      error: err.message,
+    });
+    _pinnedFingerprintOverrides = {};
+  }
+  return _pinnedFingerprintOverrides;
+}
+
 async function launchBrowserInstance() {
   const hostOS = getHostOS();
   const maxAttempts = proxyPool?.launchRetries ?? 1;
@@ -1127,6 +1179,7 @@ async function launchBrowserInstance() {
         proxy: launchProxy,
         geoip: !!launchProxy,
         virtual_display: vdDisplay,
+        ...getPinnedFingerprintOverrides(),
         exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
       });
       options.proxy = normalizePlaywrightProxy(options.proxy);
